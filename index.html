@@ -1,1 +1,202 @@
 
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#123b32">
+<title>Control de Facturas</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f3f6f4;color:#20332b;font-family:Arial,sans-serif}
+header{background:#123b32;color:white;padding:22px}
+header h1{margin:0;font-size:23px}
+header p{margin:7px 0 0;color:#d2e5dc;font-size:13px}
+main{max-width:850px;margin:22px auto;padding:0 14px}
+.panel{background:white;border-radius:15px;padding:20px;margin-bottom:17px;box-shadow:0 3px 15px #0000000b}
+h2{font-size:18px;margin:0 0 16px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:17px}
+.stat{background:#e1f0e8;border-radius:13px;padding:17px}
+.stat span{font-size:12px;color:#52685d}
+.stat strong{display:block;font-size:23px;margin-top:7px}
+label{display:block;font-size:13px;font-weight:bold;margin:12px 0}
+input,textarea{display:block;width:100%;padding:12px;margin-top:6px;border:1px solid #ccd8d1;border-radius:9px;font-size:15px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+.wide{grid-column:1/-1}
+button,.upload{border:0;border-radius:9px;background:#176b50;color:white;padding:13px 16px;font-weight:bold;cursor:pointer;font-size:14px}
+button.secondary{background:#e5f1eb;color:#15543f}
+.upload{display:block;text-align:center;margin:12px 0}
+.upload input{display:none}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.actions button{flex:1}
+.hint{font-size:12px;color:#738078;line-height:1.5}
+.record{padding:13px 0;border-bottom:1px solid #e9efeb}
+.record strong{display:block}
+.record small{color:#718078}
+.topline{display:flex;justify-content:space-between;align-items:center;gap:10px}
+footer{text-align:center;color:#87948d;font-size:12px;padding:20px}
+@media(max-width:550px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}.topline{align-items:flex-start;flex-direction:column}}
+</style>
+</head>
+<body>
+<header>
+<h1>📒 Control de Facturas</h1>
+<p>Registra tus compras desde el celular</p>
+</header>
+<main>
+<div class="stats">
+<div class="stat"><span>Facturas registradas</span><strong id="count">0</strong></div>
+<div class="stat"><span>Total de compras</span><strong id="sum">$0</strong></div>
+</div>
+
+<section class="panel">
+<h2>📷 Registrar factura</h2>
+<label class="upload">Tomar foto o seleccionar factura
+<input id="photo" type="file" accept="image/*" capture="environment">
+</label>
+<p class="hint" id="status">Puedes tomar una fotografía o elegir una imagen de tu galería. Revisa los datos reconocidos antes de guardar.</p>
+<div class="grid">
+<label>Proveedor
+<input id="supplier" placeholder="Nombre del proveedor">
+</label>
+<label>NIT
+<input id="nit" placeholder="Identificación">
+</label>
+<label>Fecha
+<input id="date" type="date">
+</label>
+<label>Número de factura
+<input id="number" placeholder="Número">
+</label>
+<label>Subtotal
+<input id="subtotal" type="number" min="0" placeholder="0">
+</label>
+<label>IVA
+<input id="tax" type="number" min="0" placeholder="0">
+</label>
+<label class="wide">Total de la factura
+<input id="total" type="number" min="0" placeholder="0">
+</label>
+<label class="wide">Productos y descripción
+<textarea id="details" rows="4" placeholder="Detalle de los productos comprados"></textarea>
+</label>
+</div>
+<div class="actions">
+<button id="save">Guardar factura</button>
+<button class="secondary" id="clear">Limpiar</button>
+</div>
+</section>
+
+<section class="panel">
+<div class="topline">
+<h2>Historial de compras</h2>
+<button class="secondary" id="export">⬇ Descargar Excel</button>
+</div>
+<div id="records"><p class="hint">Todavía no hay facturas registradas.</p></div>
+</section>
+<p class="hint">Versión inicial: los registros se guardan en este navegador. La sincronización privada en la nube se configurará en el siguiente paso.</p>
+</main>
+<footer>Control de Facturas · Versión inicial</footer>
+
+<script>
+const $=id=>document.getElementById(id);
+let invoices=JSON.parse(localStorage.getItem("facturas")||"[]");
+
+function pesos(n){
+ return new Intl.NumberFormat("es-CO",{style:"currency",currency:"COP",maximumFractionDigits:0}).format(Number(n)||0);
+}
+function saveData(){
+ localStorage.setItem("facturas",JSON.stringify(invoices));
+ render();
+}
+function render(){
+ $("count").textContent=invoices.length;
+ $("sum").textContent=pesos(invoices.reduce((s,x)=>s+Number(x.total||0),0));
+ $("records").innerHTML=invoices.length?invoices.slice().reverse().map(x=>`
+ <div class="record">
+ <strong>${safe(x.supplier)} · ${pesos(x.total)}</strong>
+ <small>${safe(x.date||"Sin fecha")} · Factura: ${safe(x.number||"Sin número")}</small>
+ <p class="hint">${safe(x.details||"")}</p>
+ </div>`).join(""):'<p class="hint">Todavía no hay facturas registradas.</p>';
+}
+function safe(v){
+ return String(v||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function numberValue(v){
+ let s=v.replace(/[^\d.,]/g,"");
+ if(s.includes(",")&&s.includes("."))s=s.replace(/\./g,"").replace(",",".");
+ else if(s.includes(","))s=s.replace(",",".");
+ else if((s.match(/\./g)||[]).length>1)s=s.replace(/\./g,"");
+ return Number(s)||0;
+}
+$("photo").addEventListener("change",async e=>{
+ const file=e.target.files[0];
+ if(!file)return;
+ $("status").textContent="Leyendo la factura. Espera un momento…";
+ try{
+  const result=await Tesseract.recognize(file,"spa+eng",{
+   logger:m=>{
+    if(m.status==="recognizing text")
+     $("status").textContent="Reconociendo texto: "+Math.round((m.progress||0)*100)+"%";
+   }
+  });
+  const text=result.data.text;
+  $("details").value=text;
+  const date=text.match(/\b(0?[1-9]|[12]\d|3[01])[\/.-](0?[1-9]|1[0-2])[\/.-](20\d{2})\b/);
+  if(date){
+   const d=date[1].padStart(2,"0"),m=date[2].padStart(2,"0"),y=date[3];
+   $("date").value=`${y}-${m}-${d}`;
+  }
+  const nit=text.match(/\bNIT[:\s#-]*([\d.-]{6,})/i);
+  if(nit)$("nit").value=nit[1];
+  const total=text.match(/(?:TOTAL\s+A\s+PAGAR|TOTAL|VALOR\s+TOTAL)[^\d]{0,20}\$?\s*([\d.,]+)/i);
+  if(total)$("total").value=numberValue(total[1]);
+  $("status").textContent="Lectura terminada. Verifica los datos: el reconocimiento puede cometer errores.";
+ }catch(err){
+  $("status").textContent="No se pudo leer la imagen. Puedes llenar los datos manualmente.";
+ }
+});
+$("save").onclick=()=>{
+ const item={
+  supplier:$("supplier").value.trim(),
+  nit:$("nit").value.trim(),
+  date:$("date").value,
+  number:$("number").value.trim(),
+  subtotal:Number($("subtotal").value)||0,
+  tax:Number($("tax").value)||0,
+  total:Number($("total").value)||0,
+  details:$("details").value.trim()
+ };
+ if(!item.supplier||!item.total){
+  alert("Escribe al menos el proveedor y el total de la factura.");
+  return;
+ }
+ invoices.push(item);
+ saveData();
+ clearForm();
+ $("status").textContent="Factura guardada correctamente.";
+};
+function clearForm(){
+ ["supplier","nit","date","number","subtotal","tax","total","details"].forEach(id=>$(id).value="");
+ $("photo").value="";
+}
+$("clear").onclick=clearForm;
+$("export").onclick=()=>{
+ if(!invoices.length){alert("Todavía no hay facturas para exportar.");return;}
+ const rows=invoices.map(x=>({
+  Fecha:x.date,Proveedor:x.supplier,NIT:x.nit,
+  Factura:x.number,Subtotal:x.subtotal,IVA:x.tax,
+  Total:x.total,Detalle:x.details
+ }));
+ const ws=XLSX.utils.json_to_sheet(rows);
+ const wb=XLSX.utils.book_new();
+ XLSX.utils.book_append_sheet(wb,ws,"Compras");
+ XLSX.writeFile(wb,"Control_de_Compras.xlsx");
+};
+render();
+</script>
+</body>
+</html>
+
