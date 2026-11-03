@@ -131,31 +131,31 @@ function numberValue(v){
  else if((s.match(/\./g)||[]).length>1)s=s.replace(/\./g,"");
  return Number(s)||0;
 }
-$("photo").addEventListener("change",async e=>{
- const file=e.target.files[0];
- if(!file)return;
- $("status").textContent="Leyendo la factura. Espera un momento…";
- try{
-  const result=await Tesseract.recognize(file,"spa+eng",{
-   logger:m=>{
-    if(m.status==="recognizing text")
-     $("status").textContent="Reconociendo texto: "+Math.round((m.progress||0)*100)+"%";
-   }
-  });
-  const text=result.data.text;
-  $("details").value=text;
-  const date=text.match(/\b(0?[1-9]|[12]\d|3[01])[\/.-](0?[1-9]|1[0-2])[\/.-](20\d{2})\b/);
-  if(date){
-   const d=date[1].padStart(2,"0"),m=date[2].padStart(2,"0"),y=date[3];
-   $("date").value=`${y}-${m}-${d}`;
-  }
-  const nit=text.match(/\bNIT[:\s#-]*([\d.-]{6,})/i);
-  if(nit)$("nit").value=nit[1];
-  const total=text.match(/(?:TOTAL\s+A\s+PAGAR|TOTAL|VALOR\s+TOTAL)[^\d]{0,20}\$?\s*([\d.,]+)/i);
-  if(total)$("total").value=numberValue(total[1]);
-  $("status").textContent="Lectura terminada. Verifica los datos: el reconocimiento puede cometer errores.";
- }catch(err){
-  $("status").textContent="No se pudo leer la imagen. Puedes llenar los datos manualmente.";
+$("photo").addEventListener("change", async e => {
+ const file = e.target.files[0];
+ if (!file) return;
+ $("status").textContent = "Analizando la factura con IA…";
+ try {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch("/api/ocr", { method: "POST", body: form });
+  const result = await response.json();
+  if (!response.ok || !result.ok) throw new Error(result.error || "No se pudo leer la factura.");
+  const data = result.data || {};
+  $("supplier").value = data.supplier || "";
+  $("nit").value = data.nit || "";
+  $("date").value = data.date || "";
+  $("number").value = data.number || "";
+  $("subtotal").value = data.subtotal ?? "";
+  $("tax").value = data.tax ?? "";
+  $("total").value = data.total ?? "";
+  $("details").value = data.details || "";
+  const confidence = Number(data.confidence || 0);
+  $("status").textContent = confidence >= 0.85
+   ? "Factura leída automáticamente. Revisa los datos antes de guardar."
+   : "Factura leída, pero algunos datos requieren revisión.";
+ } catch (error) {
+  $("status").textContent = "No se pudo leer automáticamente: " + error.message;
  }
 });
 $("save").onclick=()=>{
@@ -197,6 +197,7 @@ $("export").onclick=()=>{
 };
 render();
 </script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"752856b75eff41b09fb434bda51535c8","r":1,"spa":2}' crossorigin="anonymous"></script>
 </body>
 </html>
 
